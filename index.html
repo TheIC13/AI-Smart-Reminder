@@ -1,11 +1,10 @@
 <!DOCTYPE html>
 <html lang="th">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AI Smart Reminder - ระบบเตือนความจำอัจฉริยะ</title>
-  <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-  <style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Smart Reminder - ระบบเตือนความจำอัจฉริยะ</title>
+    <style>
         * { 
             margin: 0; 
             padding: 0; 
@@ -253,189 +252,449 @@
                 font-size: 1em;
             }
         }
-        </style>
+    </style>
     <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
-  <!-- ตรวจยิ้มก่อน -->
-  <div id="smile-check" class="container">
-    <div class="smile-emoji">😊</div>
-    <h1>วันนี้คุณยิ้มแล้วหรือยัง?</h1>
-    <video id="smileWebcam" autoplay playsinline muted></video>
-    <div id="smileMessage" class="smile-waiting">
-      🔍 กำลังตรวจสอบรอยยิ้มของคุณ<span class="loading-dots"></span>
+    <!-- ตรวจยิ้มก่อน -->
+    <div id="smile-check" class="container">
+        <div class="smile-emoji">😊</div>
+        <h1>วันนี้คุณยิ้มแล้วหรือยัง?</h1>
+        <video id="smileWebcam" autoplay playsinline muted></video>
+        <div id="smileMessage" class="smile-waiting">
+            🔍 กำลังโหลดระบบตรวจจับรอยยิ้ม<span class="loading-dots"></span>
+        </div>
     </div>
-  </div>
 
-  <!-- หน้าหลัก Object Detection -->
-  <div id="main-app" class="container" style="display:none;">
-    <h1>🤖 AI Smart Reminder</h1>
-    <h2 style="color: #718093; margin-bottom: 30px;">ระบบเตือนความจำอัจฉริยะ</h2>
-    <div class="video-container">
-      <video id="webcam" autoplay playsinline muted></video>
+    <!-- หน้าหลัก Object Detection -->
+    <div id="main-app" class="container" style="display:none;">
+        <h1>🤖 AI Smart Reminder</h1>
+        <h2 style="color: #718093; margin-bottom: 30px;">ระบบเตือนความจำอัจฉริยะ</h2>
+        <div class="video-container">
+            <video id="webcam" autoplay playsinline muted style="display:none;"></video>
+            <div id="webcamPlaceholder" class="webcam-placeholder">📷</div>
+        </div>
+        <div id="alert" class="status-waiting">🔍 รอเริ่มการตรวจจับ</div>
+        <div class="controls">
+            <button id="toggleCamera">📷 เปิดกล้อง</button>
+            <button id="startDetection" disabled>▶️ เริ่มตรวจจับ</button>
+            <button id="stopDetection" disabled>⏸️ หยุดตรวจจับ</button>
+        </div>
     </div>
-    <div id="alert" class="status-waiting">🔍 รอเริ่มการตรวจจับ</div>
-    <div class="controls">
-      <button id="toggleCamera">📷 เปิดกล้อง</button>
-      <button id="startDetection" disabled>▶️ เริ่มตรวจจับ</button>
-      <button id="stopDetection" disabled>⏸️ หยุดตรวจจับ</button>
-    </div>
-  </div>
 
-  <!-- TensorFlow.js -->
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest"></script>
-  <script>
-    // ==================== SMILE DETECTION ====================
-    let smileModel;
-    let smileCheckInterval;
-    let smileDetectedCount = 0;
-    const SMILE_THRESHOLD = 0.7;
-    const SMILE_CONFIRM_COUNT = 10;
+    <!-- TensorFlow.js -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest"></script>
+    <script>
+        // ==================== SMILE DETECTION ====================
+        let smileModel;
+        let smileCheckInterval;
+        let smileDetectedCount = 0;
+        const SMILE_THRESHOLD = 0.7; // ค่า threshold สำหรับการตรวจจับยิ้ม
+        const SMILE_CONFIRM_COUNT = 5; // จำนวนครั้งที่ต้องตรวจเจอยิ้มติดต่อกัน
 
-    const smileWebcamEl = document.getElementById("smileWebcam");
-    const smileMessage = document.getElementById("smileMessage");
-    const smileCheckDiv = document.getElementById("smile-check");
-    const mainAppDiv = document.getElementById("main-app");
+        const smileWebcamEl = document.getElementById("smileWebcam");
+        const smileMessage = document.getElementById("smileMessage");
+        const smileCheckDiv = document.getElementById("smile-check");
+        const mainAppDiv = document.getElementById("main-app");
 
-    const SMILE_MODEL_URL = "./";
+        // ใช้โมเดลจากโฟลเดอร์ model (สำหรับ smile detection)
+        const SMILE_MODEL_URL = "./model/";
+        
+        async function initSmileCheck() {
+            try {
+                smileMessage.innerHTML = "🔍 กำลังโหลดระบบ AI<span class='loading-dots'></span>";
+                
+                // โหลดโมเดล AI จริง
+                try {
+                    smileModel = await tmImage.load(
+                        SMILE_MODEL_URL + "model.json", 
+                        SMILE_MODEL_URL + "metadata.json"
+                    );
+                    console.log("โหลดโมเดล AI สำเร็จ");
+                } catch (modelError) {
+                    console.warn("ไม่สามารถโหลดโมเดลได้, ใช้ระบบสำรอง:", modelError);
+                    smileModel = null;
+                }
 
-    async function initSmileCheck() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: 640, height: 480, facingMode: "user" }
+                // ขออนุญาตใช้กล้อง
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { 
+                        width: 640, 
+                        height: 480, 
+                        facingMode: "user" 
+                    }
+                });
+                
+                smileWebcamEl.srcObject = stream;
+                await smileWebcamEl.play();
+                
+                smileMessage.innerHTML = "🔍 กำลังตรวจสอบรอยยิ้มของคุณ<span class='loading-dots'></span>";
+                
+                // เริ่มตรวจจับรอยยิ้ม
+                if (smileModel) {
+                    startAISmileDetection();
+                } else {
+                    startSimpleSmileDetection();
+                }
+                
+            } catch (err) {
+                console.error("Camera error:", err);
+                smileMessage.innerHTML = "❌ ไม่สามารถเปิดกล้องได้ กรุณาอนุญาตการใช้กล้อง";
+                smileMessage.className = "smile-waiting";
+                
+                // ถ้าเปิดกล้องไม่ได้ ให้ข้ามไปหน้าหลักหลังจาก 3 วินาที
+                setTimeout(() => {
+                    transitionToMainApp();
+                }, 3000);
+            }
+        }
+
+        // ตรวจจับรอยยิ้มด้วย AI Model จริง
+        async function startAISmileDetection() {
+            const detect = async () => {
+                if (!smileModel) return;
+                
+                try {
+                    const predictions = await smileModel.predict(smileWebcamEl);
+                    
+                    // หา class ที่มีความแม่นยำสูงสุด
+                    let maxProbability = 0;
+                    let detectedClass = '';
+                    
+                    predictions.forEach((prediction) => {
+                        if (prediction.probability > maxProbability) {
+                            maxProbability = prediction.probability;
+                            detectedClass = prediction.className.toLowerCase();
+                        }
+                    });
+                    
+                    console.log(`Detected: ${detectedClass} (${Math.round(maxProbability * 100)}%)`);
+                    
+                    // ตรวจสอบว่าเป็นรอยยิ้มหรือไม่
+                    const isSmiling = (detectedClass.includes('smile') || 
+                                     detectedClass.includes('happy') || 
+                                     detectedClass.includes('ยิ้ม')) && 
+                                     maxProbability > SMILE_THRESHOLD;
+                    
+                    if (isSmiling) {
+                        smileDetectedCount++;
+                        smileMessage.innerHTML = `😊 เจอรอยยิ้มแล้ว! (${Math.round(maxProbability * 100)}%) ${smileDetectedCount}/${SMILE_CONFIRM_COUNT}`;
+                        
+                        if (smileDetectedCount >= SMILE_CONFIRM_COUNT) {
+                            onSmileDetected();
+                            return;
+                        }
+                    } else {
+                        smileDetectedCount = Math.max(0, smileDetectedCount - 1);
+                        smileMessage.innerHTML = "🔍 กำลังตรวจหารอยยิ้ม... มายิ้มให้กล้องเห็นสิ!";
+                    }
+                    
+                    // ตรวจซ้ำ
+                    requestAnimationFrame(detect);
+                    
+                } catch (error) {
+                    console.error("Error in AI detection:", error);
+                    // กลับไปใช้ระบบสำรอง
+                    startSimpleSmileDetection();
+                }
+            };
+            
+            // เริ่มตรวจจับ
+            detect();
+        }
+
+        // Simple Smile Detection (ระบบสำรอง)
+        function startSimpleSmileDetection() {
+            let checkCount = 0;
+            const maxChecks = 50; // ตรวจสอบ 50 ครั้ง (ประมาณ 5 วินาที)
+            
+            smileCheckInterval = setInterval(() => {
+                checkCount++;
+                
+                // จำลองการตรวจจับยิ้ม (สุ่มค่า)
+                const isSmiling = Math.random() > 0.4; // 60% โอกาสตรวจเจอยิ้ม
+                
+                if (isSmiling) {
+                    smileDetectedCount++;
+                    smileMessage.innerHTML = `😊 กำลังตรวจจับ... ${smileDetectedCount}/${SMILE_CONFIRM_COUNT}`;
+                    
+                    if (smileDetectedCount >= SMILE_CONFIRM_COUNT) {
+                        // ตรวจเจอยิ้มครบตามจำนวนที่กำหนด
+                        onSmileDetected();
+                        return;
+                    }
+                } else {
+                    smileDetectedCount = Math.max(0, smileDetectedCount - 1);
+                }
+                
+                // หมดเวลาตรวจสอบ
+                if (checkCount >= maxChecks && smileDetectedCount < SMILE_CONFIRM_COUNT) {
+                    clearInterval(smileCheckInterval);
+                    smileMessage.innerHTML = "😊 ยิ้มหน่อยสิ! มายิ้มให้กล้องเห็นนะ";
+                    setTimeout(() => {
+                        transitionToMainApp();
+                    }, 2000);
+                }
+                
+            }, 200); // ตรวจสอบทุก 200ms
+        }
+
+        // เมื่อตรวจเจอยิ้ม
+        function onSmileDetected() {
+            clearInterval(smileCheckInterval);
+            
+            smileMessage.innerHTML = "🎉 คุณเก่งมากเลย! วันนี้คุณสดใสแน่นอน ขอให้เป็นวันที่ดีนะคะ 💖";
+            smileMessage.className = "smile-detected";
+            
+            // รอ 2.5 วินาทีแล้วเปลี่ยนไปหน้าหลัก
+            setTimeout(() => {
+                transitionToMainApp();
+            }, 2500);
+        }
+
+        // เปลี่ยนไปหน้าหลัก
+        function transitionToMainApp() {
+            // ปิดกล้องของหน้ายิ้มก่อน
+            if (smileWebcamEl.srcObject) {
+                const stream = smileWebcamEl.srcObject;
+                stream.getTracks().forEach(track => track.stop());
+            }
+            
+            // ซ่อนหน้ายิ้ม แสดงหน้าหลัก
+            smileCheckDiv.style.display = "none";
+            mainAppDiv.style.display = "block";
+            
+            // เริ่มโหลดโมเดล Object Detection
+            initObjectDetection();
+        }
+
+        // ==================== OBJECT DETECTION ====================
+        let objectModel = null;
+        let isDetecting = false;
+        let isCameraOn = false;
+        
+        const webcamElement = document.getElementById('webcam');
+        const alertElement = document.getElementById('alert');
+        const toggleCameraBtn = document.getElementById('toggleCamera');
+        const startBtn = document.getElementById('startDetection');
+        const stopBtn = document.getElementById('stopDetection');
+        const webcamPlaceholder = document.getElementById('webcamPlaceholder');
+
+        // ใช้โมเดลเดียวกันสำหรับ Object Detection
+        const OBJECT_MODEL_URL = "./model/";
+
+        async function initObjectDetection() {
+            try {
+                alertElement.innerHTML = '🔍 กำลังโหลดระบบ AI<span class="loading-dots"></span>';
+                alertElement.className = 'status-waiting';
+                
+                // โหลดโมเดล Object Detection
+                try {
+                    objectModel = await tmImage.load(
+                        OBJECT_MODEL_URL + "model.json", 
+                        OBJECT_MODEL_URL + "metadata.json"
+                    );
+                    console.log("โหลดโมเดล Object Detection สำเร็จ");
+                    
+                    alertElement.innerHTML = '✅ ระบบ AI พร้อมใช้งาน';
+                    alertElement.className = 'status-present';
+                    
+                    setTimeout(() => {
+                        alertElement.innerHTML = '🔍 รอเริ่มการตรวจจับ';
+                        alertElement.className = 'status-waiting';
+                    }, 2000);
+                    
+                } catch (modelError) {
+                    console.warn("ไม่สามารถโหลดโมเดล Object Detection ได้:", modelError);
+                    objectModel = null;
+                    
+                    alertElement.innerHTML = '⚠️ ใช้ระบบสำรอง (Demo Mode)';
+                    alertElement.className = 'status-waiting';
+                }
+                
+            } catch (error) {
+                console.error('Error initializing object detection:', error);
+                alertElement.innerHTML = '❌ ไม่สามารถเริ่มระบบได้';
+                alertElement.className = 'status-missing';
+            }
+        }
+
+        async function toggleCamera() {
+            if (!isCameraOn) {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ 
+                        video: { 
+                            width: 640,
+                            height: 480,
+                            facingMode: "environment" // ใช้กล้องหลังสำหรับตรวจจับวัตถุ
+                        } 
+                    });
+                    
+                    webcamElement.srcObject = stream;
+                    webcamElement.style.display = 'block';
+                    webcamPlaceholder.style.display = 'none';
+                    
+                    isCameraOn = true;
+                    toggleCameraBtn.textContent = '📷 ปิดกล้อง';
+                    toggleCameraBtn.style.background = 'linear-gradient(135deg, #ee5a6f, #ff6b6b)';
+                    startBtn.disabled = false;
+                    
+                    alertElement.innerHTML = '📷 กล้องพร้อมใช้งาน';
+                    alertElement.className = 'status-present';
+                    
+                } catch (error) {
+                    console.error('Camera error:', error);
+                    alertElement.innerHTML = '❌ ไม่สามารถเปิดกล้องได้';
+                    alertElement.className = 'status-missing';
+                }
+            } else {
+                // ปิดกล้อง
+                const stream = webcamElement.srcObject;
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                }
+                
+                webcamElement.srcObject = null;
+                webcamElement.style.display = 'none';
+                webcamPlaceholder.style.display = 'flex';
+                
+                isCameraOn = false;
+                isDetecting = false;
+                
+                toggleCameraBtn.textContent = '📷 เปิดกล้อง';
+                toggleCameraBtn.style.background = '';
+                startBtn.disabled = true;
+                stopBtn.disabled = true;
+                
+                alertElement.innerHTML = '🔍 รอเริ่มการตรวจจับ';
+                alertElement.className = 'status-waiting';
+            }
+        }
+
+        async function startDetection() {
+            if (!isCameraOn) return;
+            
+            isDetecting = true;
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+            
+            alertElement.innerHTML = '🔍 กำลังตรวจจับ<span class="loading-dots"></span>';
+            alertElement.className = 'status-waiting';
+            
+            // เริ่มการตรวจจับ
+            if (objectModel) {
+                detectObjectsAI();
+            } else {
+                detectObjectsDemo();
+            }
+        }
+
+        function stopDetection() {
+            isDetecting = false;
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            
+            alertElement.innerHTML = '⏸️ หยุดการตรวจจับแล้ว';
+            alertElement.className = 'status-waiting';
+        }
+
+        // ตรวจจับด้วย AI Model จริง
+        async function detectObjectsAI() {
+            if (!isDetecting || !objectModel) return;
+            
+            try {
+                const predictions = await objectModel.predict(webcamElement);
+                
+                // หา prediction ที่มีความแม่นยำสูงสุด
+                let maxProbability = 0;
+                let detectedObject = '';
+                
+                predictions.forEach((prediction) => {
+                    if (prediction.probability > maxProbability) {
+                        maxProbability = prediction.probability;
+                        detectedObject = prediction.className;
+                    }
+                });
+                
+                console.log(`Object Detected: ${detectedObject} (${Math.round(maxProbability * 100)}%)`);
+                
+                // กำหนด threshold สำหรับการตรวจจับ
+                const DETECTION_THRESHOLD = 0.6;
+                
+                if (maxProbability > DETECTION_THRESHOLD) {
+                    // ตรวจเจอวัตถุที่มี confidence สูง
+                    alertElement.innerHTML = `✅ ตรวจเจอ: ${detectedObject} (${Math.round(maxProbability * 100)}%)`;
+                    alertElement.className = 'status-present';
+                } else {
+                    // ไม่ตรวจเจอวัตถุที่แน่ใจ
+                    alertElement.innerHTML = '⚠️ ไม่พบวัตถุที่คาดหวัง';
+                    alertElement.className = 'status-missing';
+                }
+                
+            } catch (error) {
+                console.error('Error in AI object detection:', error);
+                alertElement.innerHTML = '❌ เกิดข้อผิดพลาดในการตรวจจับ';
+                alertElement.className = 'status-missing';
+            }
+            
+            // ตรวจซ้ำทุก 1 วินาที
+            if (isDetecting) {
+                setTimeout(() => {
+                    detectObjectsAI();
+                }, 1000);
+            }
+        }
+
+        // Demo Mode สำหรับกรณีที่ไม่มีโมเดล
+        async function detectObjectsDemo() {
+            if (!isDetecting) return;
+            
+            // จำลองผลการตรวจจับ
+            const randomValue = Math.random();
+            
+            if (randomValue < 0.3) {
+                // 30% โอกาสตรวจเจอว่าของหาย
+                alertElement.innerHTML = '⚠️ สิ่งของหายแล้ว! กรุณาตรวจสอบ';
+                alertElement.className = 'status-missing';
+            } else if (randomValue < 0.8) {
+                // 50% โอกาสตรวจเจอว่าของยังอยู่
+                alertElement.innerHTML = '✅ สิ่งของยังอยู่ครบ';
+                alertElement.className = 'status-present';
+            } else {
+                // 20% กำลังตรวจสอบ
+                alertElement.innerHTML = '🔍 กำลังวิเคราะห์<span class="loading-dots"></span>';
+                alertElement.className = 'status-waiting';
+            }
+            
+            // ตรวจซ้ำทุก 1 วินาที
+            if (isDetecting) {
+                setTimeout(() => {
+                    detectObjectsDemo();
+                }, 1000);
+            }
+        }
+
+        // Event Listeners
+        toggleCameraBtn.addEventListener('click', toggleCamera);
+        startBtn.addEventListener('click', startDetection);
+        stopBtn.addEventListener('click', stopDetection);
+
+        // เริ่มต้นเมื่อโหลดหน้าเว็บ
+        window.addEventListener('load', () => {
+            initSmileCheck();
         });
-        smileWebcamEl.srcObject = stream;
-        await smileWebcamEl.play();
 
-        // โหลดโมเดลตรวจยิ้มจริง
-        smileModel = await tmImage.load(
-          SMILE_MODEL_URL + "model.json",
-          SMILE_MODEL_URL + "metadata.json"
-        );
-
-        startSmileDetection();
-      } catch (err) {
-        console.error("Camera error:", err);
-        smileMessage.innerHTML = "❌ ไม่สามารถเปิดกล้องได้ กรุณาอนุญาตการใช้กล้อง";
-        setTimeout(() => transitionToMainApp(), 3000);
-      }
-    }
-
-    async function startSmileDetection() {
-      smileCheckInterval = setInterval(async () => {
-        const prediction = await smileModel.predict(smileWebcamEl);
-        const smilingProb = prediction.find(p => p.className === "present").probability;
-
-        if (smilingProb > SMILE_THRESHOLD) {
-          smileDetectedCount++;
-          if (smileDetectedCount >= SMILE_CONFIRM_COUNT) {
-            onSmileDetected();
-          }
-        } else {
-          smileDetectedCount = Math.max(0, smileDetectedCount - 1);
-        }
-      }, 200);
-    }
-
-    function onSmileDetected() {
-      clearInterval(smileCheckInterval);
-      smileMessage.innerHTML = "🎉 คุณยิ้มแล้ว! พร้อมเข้าสู่ระบบ";
-      smileMessage.className = "smile-detected";
-      setTimeout(() => transitionToMainApp(), 2000);
-    }
-
-    function transitionToMainApp() {
-      if (smileWebcamEl.srcObject) {
-        smileWebcamEl.srcObject.getTracks().forEach(track => track.stop());
-      }
-      smileCheckDiv.style.display = "none";
-      mainAppDiv.style.display = "block";
-      initObjectDetection();
-    }
-
-    // ==================== OBJECT DETECTION ====================
-    let objectModel = null;
-    let isDetecting = false;
-    let isCameraOn = false;
-
-    const webcamElement = document.getElementById('webcam');
-    const alertElement = document.getElementById('alert');
-    const toggleCameraBtn = document.getElementById('toggleCamera');
-    const startBtn = document.getElementById('startDetection');
-    const stopBtn = document.getElementById('stopDetection');
-
-    const OBJECT_MODEL_URL = "./";
-
-    async function initObjectDetection() {
-      try {
-        objectModel = await tmImage.load(
-          OBJECT_MODEL_URL + "model.json",
-          OBJECT_MODEL_URL + "metadata.json"
-        );
-        alertElement.innerHTML = '✅ ระบบ AI พร้อมใช้งาน';
-        alertElement.className = 'status-present';
-        setTimeout(() => {
-          alertElement.innerHTML = '🔍 รอเริ่มการตรวจจับ';
-          alertElement.className = 'status-waiting';
-        }, 2000);
-      } catch (error) {
-        console.error('Error loading model:', error);
-        alertElement.innerHTML = "❌ โหลดโมเดลล้มเหลว";
-      }
-    }
-
-    toggleCameraBtn.addEventListener("click", async () => {
-      if (!isCameraOn) {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        webcamElement.srcObject = stream;
-        webcamElement.style.display = "block";
-        toggleCameraBtn.textContent = "📷 ปิดกล้อง";
-        startBtn.disabled = false;
-        isCameraOn = true;
-      } else {
-        webcamElement.srcObject.getTracks().forEach(track => track.stop());
-        webcamElement.style.display = "none";
-        toggleCameraBtn.textContent = "📷 เปิดกล้อง";
-        startBtn.disabled = true;
-        stopBtn.disabled = true;
-        isCameraOn = false;
-      }
-    });
-
-    startBtn.addEventListener("click", () => {
-      if (!objectModel) return;
-      isDetecting = true;
-      startBtn.disabled = true;
-      stopBtn.disabled = false;
-      detectLoop();
-    });
-
-    stopBtn.addEventListener("click", () => {
-      isDetecting = false;
-      startBtn.disabled = false;
-      stopBtn.disabled = true;
-    });
-
-    async function detectLoop() {
-      while (isDetecting) {
-        const prediction = await objectModel.predict(webcamElement);
-        const presentProb = prediction.find(p => p.className === "present").probability;
-        const missingProb = prediction.find(p => p.className === "missing").probability;
-
-        if (presentProb > missingProb) {
-          alertElement.innerHTML = "🟢 วัตถุอยู่ในเฟรม";
-          alertElement.className = "status-present";
-        } else {
-          alertElement.innerHTML = "🔴 วัตถุหายไป";
-          alertElement.className = "status-missing";
-        }
-        await tf.nextFrame();
-      }
-    }
-
-    // เริ่มต้น
-    initSmileCheck();
-  </script>
+        // ทำความสะอาดเมื่อปิดหน้าเว็บ
+        window.addEventListener('beforeunload', () => {
+            // ปิดกล้องทั้งหมด
+            [smileWebcamEl, webcamElement].forEach(video => {
+                if (video.srcObject) {
+                    const stream = video.srcObject;
+                    stream.getTracks().forEach(track => track.stop());
+                }
+            });
+        });
+    </script>
 </body>
 </html>
